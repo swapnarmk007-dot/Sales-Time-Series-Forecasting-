@@ -1,9 +1,14 @@
 import os
-import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
 from statsmodels.tsa.arima.model import ARIMA
+
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ModuleNotFoundError:
+    JOBLIB_AVAILABLE = False
 
 # --------------------------------
 # 1. PAGE CONFIGURATION
@@ -140,13 +145,15 @@ forecast_days = st.slider(
 )
 
 if st.button("Generate Sales Forecast"):
+    model_order = (1, 1, 1)
 
-    if not os.path.exists(MODEL_PATH):
-        st.error(f"Saved ARIMA model not found at: `{MODEL_PATH}`")
-        st.stop()
-
-    saved_model = joblib.load(MODEL_PATH)
-    model_order = getattr(getattr(saved_model, "model", None), "order", (1, 1, 1))
+    if JOBLIB_AVAILABLE and os.path.exists(MODEL_PATH):
+        saved_model = joblib.load(MODEL_PATH)
+        model_order = getattr(getattr(saved_model, "model", None), "order", (1, 1, 1))
+    elif not JOBLIB_AVAILABLE:
+        st.info("`joblib` is not installed; using default ARIMA order (1, 1, 1).")
+    elif not os.path.exists(MODEL_PATH):
+        st.info(f"Saved model not found at `{MODEL_PATH}`; fitting ARIMA with default order (1, 1, 1).")
 
     final_model = ARIMA(
         daily_sales,
