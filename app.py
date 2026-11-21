@@ -2,7 +2,12 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
-from statsmodels.tsa.arima.model import ARIMA
+
+try:
+    from statsmodels.tsa.arima.model import ARIMA
+    STATSMODELS_AVAILABLE = True
+except ModuleNotFoundError:
+    STATSMODELS_AVAILABLE = False
 
 try:
     import joblib
@@ -145,34 +150,36 @@ forecast_days = st.slider(
 )
 
 if st.button("Generate Sales Forecast"):
-    model_order = (1, 1, 1)
-
-    if JOBLIB_AVAILABLE and os.path.exists(MODEL_PATH):
-        saved_model = joblib.load(MODEL_PATH)
-        model_order = getattr(getattr(saved_model, "model", None), "order", (1, 1, 1))
-    elif not JOBLIB_AVAILABLE:
-        st.info("`joblib` is not installed; using default ARIMA order (1, 1, 1).")
-    elif not os.path.exists(MODEL_PATH):
-        st.info(f"Saved model not found at `{MODEL_PATH}`; fitting ARIMA with default order (1, 1, 1).")
-
-    final_model = ARIMA(
-        daily_sales,
-        order=model_order
-    ).fit()
-
-    forecast = final_model.forecast(
-        steps=forecast_days
-    )
-
     future_dates = pd.date_range(
         start=daily_sales.index.max() + pd.Timedelta(days=1),
         periods=forecast_days,
         freq="D"
     )
 
+    if STATSMODELS_AVAILABLE:
+        model_order = (1, 1, 1)
+
+        if JOBLIB_AVAILABLE and os.path.exists(MODEL_PATH):
+            saved_model = joblib.load(MODEL_PATH)
+            model_order = getattr(getattr(saved_model, "model", None), "order", (1, 1, 1))
+
+        final_model = ARIMA(
+            daily_sales,
+            order=model_order
+        ).fit()
+
+        forecast_values = final_model.forecast(steps=forecast_days).values
+    else:
+        st.warning(
+            "`statsmodels` is not installed yet—add `statsmodels` to `requirements.txt` and reboot. "
+            "Showing a 14-day rolling average fallback forecast for now."
+        )
+        rolling_avg = float(daily_sales.tail(14).mean())
+        forecast_values = np.full(forecast_days, rolling_avg)
+
     forecast_df = pd.DataFrame({
         "Date": future_dates,
-        "Predicted Units Sold": forecast.values
+        "Predicted Units Sold": forecast_values
     })
 
     st.success("Sales Forecast Generated Successfully!")
@@ -196,7 +203,7 @@ if st.button("Generate Sales Forecast"):
 
     future_df = pd.DataFrame({
         "Date": future_dates,
-        "Sales": forecast.values,
+        "Sales": forecast_values,
         "Type": "Forecast"
     })
 
